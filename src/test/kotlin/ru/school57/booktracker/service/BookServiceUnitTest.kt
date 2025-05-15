@@ -1,117 +1,139 @@
 package ru.school57.booktracker.service
 
-import io.kotest.matchers.shouldBe
-import io.mockk.every
-import io.mockk.verify
+import io.mockk.*
 import io.mockk.junit5.MockKExtension
 import io.mockk.impl.annotations.MockK
 import io.mockk.impl.annotations.InjectMockKs
+import jakarta.persistence.EntityNotFoundException
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import ru.school57.booktracker.dto.BookDto
 import ru.school57.booktracker.entity.Book
 import ru.school57.booktracker.repository.BookRepository
-import jakarta.persistence.EntityNotFoundException
+import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class BookServiceUnitTest {
 
+
     @MockK
     lateinit var bookRepository: BookRepository
+
 
     @InjectMockKs
     lateinit var bookService: BookService
 
+    @BeforeEach
+    fun setUp() {
+    }
+
+
     @Test
-    fun `testCreateBook should save book to repository`() {
-        val bookDto = BookDto("Test Book", "Author", 2023, false)
-        val savedBook = Book(1, "Test Book", "Author", 2023, false)
+    fun testCreateBook() {
+        val dto = BookDto("Test Title", "Test Author", 2020, false)
+        val saved = Book(1L, "Test Title", "Test Author", 2020, false)
 
-        every { bookRepository.save(any()) } returns savedBook
+        every { bookRepository.save(any()) } returns saved
 
-        val result = bookService.create(bookDto)
+        val result = bookService.create(dto)
 
-        result.title shouldBe "Test Book"
-        verify { bookRepository.save(any()) }
+
+        assertEquals("Test Title", result.title)
+        verify(exactly = 1) { bookRepository.save(match { it.title == "Test Title" }) }
+    }
+
+
+    @Test
+    fun testGetById() {
+        val book = Book(1L, "Title", "Author", 1999, true)
+
+        every { bookRepository.findById(1L) } returns Optional.of(book)
+
+        val dto = bookService.getById(1L)
+
+        assertEquals("Title", dto.title)
+        verify(exactly = 1) { bookRepository.findById(1L) }
     }
 
     @Test
-    fun `testGetById should return book when exists`() {
-        val book = Book(1, "Test Book", "Author", 2023, false)
+    fun testUpdateBook() {
+        val existing = Book(1L, "Old", "Author", 1990, false)
+        val dto = BookDto( "New Title", "Author", 2022, true)
+        val updated = Book(1L, "New Title", "Author", 2022, true)
 
-        every { bookRepository.findById(1) } returns book
+        every { bookRepository.findById(1L) } returns Optional.of(existing)
+        every { bookRepository.save(any()) } returns updated
 
-        val result = bookService.getById(1)
+        val result = bookService.update(1L, dto)
 
-        result.title shouldBe "Test Book"
-        verify { bookRepository.findById(1) }
+        assertEquals("New Title", result.title)
+        assertTrue(result.read)
+        verify(exactly = 1) { bookRepository.findById(1L) }
+        verify(exactly = 1) { bookRepository.save(match { it.title == "New Title" && it.read }) }
+    }
+
+
+    @Test
+    fun testDeleteBook() {
+        every { bookRepository.existsById(1L) } returns true
+        every { bookRepository.deleteById(1L) } just Runs
+
+        bookService.delete(1L)
+
+        verify(exactly = 1) { bookRepository.existsById(1L) }
+        verify(exactly = 1) { bookRepository.deleteById(1L) }
     }
 
     @Test
-    fun `testUpdateBook should update existing book`() {
-        val existingBook = Book(1, "Old Title", "Author", 2020, false)
-        val updatedBook = Book(1, "New Title", "Author", 2020, true)
-        val bookDto = BookDto("New Title", "Author", 2020, true)
+    fun testDeleteBookNotFoundThrows() {
+        every { bookRepository.existsById(1L) } returns false
 
-        every { bookRepository.findById(1) } returns existingBook
-        every { bookRepository.save(any()) } returns updatedBook
-
-        val result = bookService.update(1, bookDto)
-
-        result.title shouldBe "New Title"
-        result.read shouldBe true
-        verify {
-            bookRepository.findById(1)
-            bookRepository.save(any())
+        val ex = assertThrows(EntityNotFoundException::class.java) {
+            bookService.delete(1L)
         }
-    }
-
-    @Test
-    fun `testDeleteBook should delete when book exists`() {
-        every { bookRepository.existsById(1) } returns true
-        every { bookRepository.deleteById(1) } returns Unit
-
-        bookService.delete(1)
-
-        verify {
-            bookRepository.existsById(1)
-            bookRepository.deleteById(1)
-        }
-    }
-
-    @Test
-    fun `testListBooks should filter by read status`() {
-        val readBooks = listOf(Book(1, "Book 1", "Author", 2023, true))
-
-        every { bookRepository.findByRead(true) } returns readBooks
-
-        val result = bookService.list(true)
-
-        result.size shouldBe 1
-        result[0].read shouldBe true
-        verify { bookRepository.findByRead(true) }
-    }
-
-    @Test
-    fun `testGetNotFound should throw exception when book not exists`() {
-        every { bookRepository.findById(99) } returns null
-
-        assertThrows<EntityNotFoundException> {
-            bookService.getById(99)
-        }
-
-        verify { bookRepository.findById(99) }
-    }
-
-    @Test
-    fun `testDeleteBook should throw exception when book not exists`() {
-        every { bookRepository.existsById(99) } returns false
-
-        assertThrows<EntityNotFoundException> {
-            bookService.delete(99)
-        }
-
+        assertEquals("Book with ID 1 not found", ex.message)
+        verify(exactly = 1) { bookRepository.existsById(1L) }
         verify(exactly = 0) { bookRepository.deleteById(any()) }
+    }
+
+
+    @Test
+    fun testListBooks() {
+        val booksRead = listOf(
+            Book(1L, "Read Book 1", "Author", 2000, true),
+            Book(2L, "Read Book 2", "Author", 2001, true)
+        )
+        val booksAll = listOf(
+            Book(1L, "Read Book 1", "Author", 2000, true),
+            Book(2L, "Unread Book", "Author", 2002, false)
+        )
+
+        every { bookRepository.findByRead(true) } returns booksRead
+        every { bookRepository.findAll() } returns booksAll
+
+        val readList = bookService.list(true)
+        val allList = bookService.list(null)
+
+        assertEquals(2, readList.size)
+        assertTrue(readList.all { it.read })
+
+        assertEquals(2, allList.size)
+
+        verify(exactly = 1) { bookRepository.findByRead(true) }
+        verify(exactly = 1) { bookRepository.findAll() }
+    }
+
+
+    @Test
+    fun testGetNotFound() {
+        every { bookRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertThrows(EntityNotFoundException::class.java) {
+            bookService.getById(999L)
+        }
+        assertEquals("Book with ID 999 not found", ex.message)
+        verify(exactly = 1) { bookRepository.findById(999L) }
     }
 }

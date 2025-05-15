@@ -1,19 +1,21 @@
 package ru.school57.booktracker.service
 
 import com.ninjasquad.springmockk.MockkBean
-import io.mockk.MockKAnnotations
 import io.mockk.every
+import io.mockk.just
+import io.mockk.runs
 import io.mockk.verify
-import org.junit.jupiter.api.Assertions.*
+import jakarta.persistence.EntityNotFoundException
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import ru.school57.booktracker.dto.BookDto
 import ru.school57.booktracker.entity.Book
 import ru.school57.booktracker.repository.BookRepository
-import jakarta.persistence.EntityNotFoundException
+import java.util.*
 
 @SpringBootTest
 class BookServiceIntegrationTest {
@@ -24,89 +26,89 @@ class BookServiceIntegrationTest {
     @Autowired
     lateinit var bookService: BookService
 
+    private val sampleBook = Book(id = 1, title = "Title", author = "Author", year = 2023, read = false)
+    private val sampleBookDto = BookDto.fromEntity(sampleBook)
+
     @BeforeEach
     fun setUp() {
-        MockKAnnotations.init(this)
+        // SpringMockK сам инициализирует моки, можно не делать ничего
     }
 
     @Test
     fun testCreateBook() {
-        val bookDto = BookDto("Test Book", "Author", 2023, false)
-        val savedBook = Book(1, "Test Book", "Author", 2023, false)
+        every { bookRepository.save(any<Book>()) } returns sampleBook
 
-        every { bookRepository.save(any()) } returns savedBook
+        val created = bookService.create(sampleBookDto)
 
-        val result = bookService.create(bookDto)
+        verify(exactly = 1) { bookRepository.save(any<Book>()) }
 
-        assertEquals(1L, result.toEntity().id)
-        verify { bookRepository.save(any()) }
+        assertEquals(sampleBook.title, created.title)
     }
 
     @Test
     fun testGetBookById() {
-        val book = Book(1, "Test Book", "Author", 2023, false)
+        every { bookRepository.findById(1) } returns Optional.of(sampleBook)
 
-        every { bookRepository.findById(1) } returns book
+        val found = bookService.getById(1)
 
-        val result = bookService.getById(1)
+        verify(exactly = 1) { bookRepository.findById(1) }
 
-        assertEquals("Test Book", result.title)
-        verify { bookRepository.findById(1) }
+        assertEquals(sampleBook.author, found.author)
     }
 
     @Test
     fun testUpdateBook() {
-        val existingBook = Book(1, "Old Title", "Author", 2020, false)
-        val updatedBook = Book(1, "New Title", "Author", 2020, true)
-        val bookDto = BookDto("New Title", "Author", 2020, true)
+        val updatedDto = BookDto(title = "Updated", author = "Author", year = 2024, read = true)
+        val updatedBook = sampleBook.copy(
+            title = updatedDto.title,
+            author = updatedDto.author,
+            year = updatedDto.year,
+            read = updatedDto.read
+        )
 
-        every { bookRepository.findById(1) } returns existingBook
-        every { bookRepository.save(any()) } returns updatedBook
+        every { bookRepository.findById(1) } returns Optional.of(sampleBook)
+        every { bookRepository.save(any<Book>()) } returns updatedBook
 
-        val result = bookService.update(1, bookDto)
+        val result = bookService.update(1, updatedDto)
 
-        assertEquals("New Title", result.title)
-        assertTrue(result.read)
-        verify {
-            bookRepository.findById(1)
-            bookRepository.save(any())
-        }
+        verify(exactly = 1) { bookRepository.findById(1) }
+        verify(exactly = 1) { bookRepository.save(any<Book>()) }
+        assertEquals(updatedDto.title, result.title)
+        assertEquals(updatedDto.read, result.read)
     }
 
     @Test
     fun testDeleteBook() {
         every { bookRepository.existsById(1) } returns true
-        every { bookRepository.deleteById(1) } returns Unit
+        every { bookRepository.deleteById(1) } just runs
 
         bookService.delete(1)
 
-        verify {
-            bookRepository.existsById(1)
-            bookRepository.deleteById(1)
-        }
+        verify(exactly = 1) { bookRepository.existsById(1) }
+        verify(exactly = 1) { bookRepository.deleteById(1) }
     }
 
     @Test
     fun testFilterByRead() {
-        val readBooks = listOf(Book(1, "Book 1", "Author", 2023, true))
-
+        val readBooks = listOf(sampleBook)
         every { bookRepository.findByRead(true) } returns readBooks
 
         val result = bookService.list(true)
 
+        verify(exactly = 1) { bookRepository.findByRead(true) }
         assertEquals(1, result.size)
-        assertTrue(result[0].read)
-        verify { bookRepository.findByRead(true) }
+        assertEquals(sampleBook.title, result[0].title)
     }
 
     @Test
     fun testGetNonExistentBookThrows() {
-        every { bookRepository.findById(99) } returns null
+        every { bookRepository.findById(999) } returns Optional.empty()
 
-        assertThrows<EntityNotFoundException> {
-            bookService.getById(99)
+        val exception = assertThrows(EntityNotFoundException::class.java) {
+            bookService.getById(999)
         }
 
-        verify { bookRepository.findById(99) }
+        verify(exactly = 1) { bookRepository.findById(999) }
+        assertEquals("Book with ID 999 not found", exception.message)
     }
 }
