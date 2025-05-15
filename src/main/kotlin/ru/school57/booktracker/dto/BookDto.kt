@@ -1,26 +1,28 @@
 package ru.school57.booktracker.dto
 
-// TODO: добавить поля в BookDto (используйте data class)
+import ru.school57.booktracker.entity.Book
 
-// Этот класс используется для обмена данными между клиентом и сервером.
-// Поля должны соответствовать информации о книге, которую пользователь может создать, просмотреть или изменить.
 
 data class BookDto(
-    // TODO: добавить поле title (тип String)
-    // Название книги. Обязательное поле.
+    val title: String,
 
-    // TODO: добавить поле author (тип String)
-    // Имя автора книги. Обязательное поле.
 
-    // TODO: добавить поле year (тип Int)
-    // Год издания книги.
+    val author: String,
 
-    // TODO: добавить поле read (тип Boolean)
-    // Признак, прочитана ли книга (true или false)
-)
+    val year: Int,
 
-// TODO: реализовать функцию расширения BookDto.toEntity(): Book
-// Преобразует DTO в сущность для сохранения в базу данных
 
-// TODO: реализовать функцию расширения Book.toDto(): BookDto
-// Преобразует сущность книги из базы в DTO для возврата через API
+    val read: Boolean
+
+) {
+
+    fun toEntity(): Book = Book(title=title, author=author, year=year, read=read)
+
+
+
+
+    companion object {
+        fun fromEntity(book: Book): BookDto = BookDto(book.title, book.author, book.year, book.read)
+    }
+
+}
